@@ -271,6 +271,7 @@ class Trainer(LinearHeadTrainer):
         # ========== 初始化记录原始梯度的列表 ==========
         self.raw_gradients = []
         # ===========================================
+        self.selected_Cs = [] #初始化记录选中的 C 值的列表
 
         if self.args.from_linearhead and model_path is None:
             super().train(model_path, dev_objective)
@@ -385,22 +386,22 @@ class Trainer(LinearHeadTrainer):
         model.zero_grad()
         metrics = None
 
-        # ================== R2T 自适应裁剪设置（改进版） ==================
-        # 定义几何增长的候选 C 值列表（仅保留合理范围）
-        C_candidates = [16, 32, 64, 128]   # 可调整为 [8, 16, 32, 64] 等
+        # ================== R2T 自适应裁剪设置（严格隐私组合） ==================
+        # 定义几何增长的候选 C 值列表
+        C_candidates = [16,32,64,128]
         num_candidates = len(C_candidates)
-        # 重要：不分割隐私预算，每个候选的噪声基于总 epsilon 计算
-        # 根据并行组合定理，取最大值的操作不会增加隐私成本？实际上需要高级组合，但此处简化，相信效果
+        # 每个候选分配 epsilon_candidate = total_epsilon / num_candidates
+        per_candidate_epsilon = self.args.dp_epsilon / num_candidates
         self.per_candidate_noise_stds = []
         if self.args.dpzero:
             sample_rate = total_train_batch_size / (model.num_k * model.num_labels)
-            # 基于总 epsilon 计算 multiplier
-            multiplier = get_noise_multiplier(target_epsilon=self.args.dp_epsilon,
-                                              target_delta=self.args.dp_delta,
-                                              sample_rate=sample_rate,
-                                              epochs=self.args.num_train_epochs)
             for C in C_candidates:
-                # 噪声标准差公式与原始 DPZero 一致，仅 C 不同
+                # 基于分割后的 epsilon 计算 multiplier
+                multiplier = get_noise_multiplier(target_epsilon=per_candidate_epsilon,
+                                                  target_delta=self.args.dp_delta,
+                                                  sample_rate=sample_rate,
+                                                  epochs=self.args.num_train_epochs)
+                # 噪声标准差公式与原始 DPZero 一致
                 std = 2 * multiplier * C / total_train_batch_size
                 self.per_candidate_noise_stds.append(std)
         # ===============================================================
@@ -468,14 +469,16 @@ class Trainer(LinearHeadTrainer):
                         if self.args.dpzero:
                             noisy_grads = []
                             for idx, C in enumerate(C_candidates):
-                                clipped = dpzero_clip(projected_grad_raw, C).mean()   # 裁剪
+                                clipped = dpzero_clip(projected_grad_raw, C).mean()
                                 noise = torch.randn(1).item() * self.per_candidate_noise_stds[idx]
-                                # 可选：添加 R2T 论文中的减除项（减少噪声虚高），此处不使用，保持简洁
-                                # penalized_noisy = clipped + noise - self.per_candidate_noise_stds[idx] * np.log(len(C_candidates))
                                 noisy = clipped + noise
                                 noisy_grads.append(noisy)
-                            # 取最大值作为最终梯度估计
-                            projected_grad = max(noisy_grads)
+                            # 取最大值作为最终梯度估计，并记录对应的 C
+                            noisy_vals = [ng.item() for ng in noisy_grads]
+                            best_idx = np.argmax(noisy_vals)
+                            best_C = C_candidates[best_idx]
+                            projected_grad = noisy_grads[best_idx] 
+                            self.selected_Cs.append(best_C)
                         else:
                             projected_grad = projected_grad_raw
                         # ===============================================================
@@ -664,15 +667,28 @@ class Trainer(LinearHeadTrainer):
             abs_output_dir = os.path.abspath(output_dir)
             os.makedirs(abs_output_dir, exist_ok=True)
             logger.info(f"Absolute output directory: {abs_output_dir}")
+
+            # 保存原始梯度
             grad_save_path = os.path.join(abs_output_dir, "raw_gradients.npy")
             try:
                 np.save(grad_save_path, np.array(self.raw_gradients))
                 if os.path.exists(grad_save_path):
-                    logger.info(f"✅ SUCCESS: Saved raw gradients (length {len(self.raw_gradients)}) to {grad_save_path}")
+                    logger.info(
+                        f"✅ SUCCESS: Saved raw gradients (length {len(self.raw_gradients)}) to {grad_save_path}")
                 else:
                     logger.error(f"❌ FAILURE: File not found after save: {grad_save_path}")
             except Exception as e:
                 logger.error(f"❌ Exception during np.save: {e}")
+
+            # 保存选中的 C 值
+            if len(self.selected_Cs) > 0:
+                selected_C_path = os.path.join(abs_output_dir, "selected_Cs.npy")
+                try:
+                    np.save(selected_C_path, np.array(self.selected_Cs))
+                    logger.info(
+                        f"✅ SUCCESS: Saved selected C values (length {len(self.selected_Cs)}) to {selected_C_path}")
+                except Exception as e:
+                    logger.error(f"❌ Exception when saving selected_Cs: {e}")
         else:
             logger.warning("No raw gradients recorded (list is empty)")
         # ====================================
