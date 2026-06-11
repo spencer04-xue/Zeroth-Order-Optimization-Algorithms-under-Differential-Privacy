@@ -48,7 +48,7 @@ def load_datasets(data_dir, tasks):
                 splits = ["train", "dev"]
             for split in splits:
                 filename = os.path.join(dirname, f"{split}.tsv")
-                with open(filename, "r") as f:
+                with open(filename, 'r', encoding='utf-8') as f:
                     lines = f.readlines()
                 dataset[split] = lines
             datasets[task] = dataset
@@ -59,7 +59,7 @@ def load_datasets(data_dir, tasks):
             splits = ["train", "test"]
             for split in splits:
                 filename = os.path.join(dirname, f"{split}.csv")
-                dataset[split] = pd.read_csv(filename, header=None)
+                dataset[split] = pd.read_csv(filename, header=None, encoding='utf-8')
             datasets[task] = dataset
     return datasets
 
@@ -132,7 +132,7 @@ def main():
                         np.random.seed(42)
                         np.random.shuffle(test_lines)
                         test_lines = test_lines[:1000]
-                    with open(os.path.join(setting_dir, f"{split}.tsv"), "w") as f:
+                    with open(os.path.join(setting_dir, f"{split}.tsv"), "w", encoding='utf-8') as f:
                         for line in test_header:
                             f.write(line)
                         for line in test_lines:
@@ -143,7 +143,7 @@ def main():
                 test_dataset = dataset['test']
                 if '1k-test' in args.mode and len(test_dataset.index) > 1000:
                     test_dataset = test_dataset.sample(n=1000, random_state=42)
-                test_dataset.to_csv(os.path.join(setting_dir, 'test.csv'), header=False, index=False)
+                test_dataset.to_csv(os.path.join(setting_dir, 'test.csv'), header=False, index=False, encoding='utf-8')
 
             # Get label list for balanced sampling
             label_list = {}
@@ -155,7 +155,7 @@ def main():
                     label_list[label].append(line)
 
             if task in ["MNLI", "MRPC", "QNLI", "QQP", "RTE", "SNLI", "SST-2", "STS-B", "WNLI", "CoLA"]:
-                with open(os.path.join(setting_dir, "train.tsv"), "w") as f:
+                with open(os.path.join(setting_dir, "train.tsv"), "w", encoding='utf-8') as f:
                     for line in train_header:
                         f.write(line)
                     for label in label_list:
@@ -164,7 +164,7 @@ def main():
                 name = "dev.tsv"
                 if task == 'MNLI':
                     name = "dev_matched.tsv"
-                with open(os.path.join(setting_dir, name), "w") as f:
+                with open(os.path.join(setting_dir, name), "w", encoding='utf-8') as f:
                     for line in train_header:
                         f.write(line)
                     for label in label_list:
@@ -177,7 +177,7 @@ def main():
                     for line in label_list[label][:k]:
                         new_train.append(line)
                 new_train = DataFrame(new_train)
-                new_train.to_csv(os.path.join(setting_dir, 'train.csv'), header=False, index=False)
+                new_train.to_csv(os.path.join(setting_dir, 'train.csv'), header=False, index=False, encoding='utf-8')
 
                 new_dev = []
                 for label in label_list:
@@ -185,7 +185,7 @@ def main():
                     for line in label_list[label][k:k*dev_rate]:
                         new_dev.append(line)
                 new_dev = DataFrame(new_dev)
-                new_dev.to_csv(os.path.join(setting_dir, 'dev.csv'), header=False, index=False)
+                new_dev.to_csv(os.path.join(setting_dir, 'dev.csv'), header=False, index=False, encoding='utf-8')
 
 
 if __name__ == "__main__":

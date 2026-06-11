@@ -388,7 +388,7 @@ class Trainer(LinearHeadTrainer):
 
         # ================== R2T 自适应裁剪设置（严格隐私组合） ==================
         # 定义几何增长的候选 C 值列表
-        C_candidates = [16,32,64,128]
+        C_candidates = [16,32,64,128,256]
         num_candidates = len(C_candidates)
         # 每个候选分配 epsilon_candidate = total_epsilon / num_candidates
         per_candidate_epsilon = self.args.dp_epsilon / num_candidates
@@ -471,7 +471,11 @@ class Trainer(LinearHeadTrainer):
                             for idx, C in enumerate(C_candidates):
                                 clipped = dpzero_clip(projected_grad_raw, C).mean()
                                 noise = torch.randn(1).item() * self.per_candidate_noise_stds[idx]
-                                noisy = clipped + noise
+                                # ----- 添加 R2T 论文中的惩罚项（减项），保证每个候选是下估计 -----
+                                # 惩罚项大小：噪声标准差 * ln(候选个数)
+                                penalty = self.per_candidate_noise_stds[idx] * np.log(num_candidates)
+                                # 带惩罚的带噪估计 = 裁剪值 + 噪声 - 惩罚
+                                noisy = clipped + noise - penalty
                                 noisy_grads.append(noisy)
                             # 取最大值作为最终梯度估计，并记录对应的 C
                             noisy_vals = [ng.item() for ng in noisy_grads]

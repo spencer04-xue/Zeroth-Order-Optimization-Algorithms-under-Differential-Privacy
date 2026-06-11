@@ -1,3 +1,15 @@
 .DS_Store
 .idea
 *.pyc
+*.log
+
+# 忽略所有 .npy 文件，但排除 selected_Cs.npy
+*.npy
+!selected_Cs.npy
+!roberta/result/**/selected_Cs.npy
+
+# 明确忽略大梯度文件
+roberta/result/**/raw_gradients.npy
+
+# 忽略缓存文件
+roberta/result/**/cached_*

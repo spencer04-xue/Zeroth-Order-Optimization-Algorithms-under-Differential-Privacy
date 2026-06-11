@@ -4,21 +4,21 @@
 export HF_ENDPOINT=https://hf-mirror.com
 
 # 固定其他参数（与成功训练时一致）
-export TASK=SST-2
+export TASK=${TASK:-SST-2}
 export K=512
 export SEED=42
 export BS=64
 export LR=5e-6         
 export EPS=1e-3
 export WD=0
-export STEP=800
+export STEP=1000
 export EVAL_STEP=10000
 export MODEL=roberta-large
 export DPZERO_PRIVACY_EPS=6.0
 export DPZERO_PRIVACY_DELTA=5e-6
 
 # 定义要测试的 C 值列表
-C_VALUES=(100)
+C_VALUES=(20 100 200)
 
 for C in "${C_VALUES[@]}"; do
     echo "========================================="
